@@ -1,0 +1,71 @@
+const TOTAL = 16;          // 候選人數
+const MAX_PICKS = 3;       // 每人票數
+const ADMIN_KEY = 'change-me-1234'; // 看結果用的密碼，請自己改
+
+function sheet_() {
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty('SHEET_ID');
+  let ss;
+  if (id) {
+    ss = SpreadsheetApp.openById(id);
+  } else {
+    ss = SpreadsheetApp.create('三票人氣投票-選票');
+    props.setProperty('SHEET_ID', ss.getId());
+  }
+  let sh = ss.getSheetByName('votes');
+  if (!sh) {
+    sh = ss.insertSheet('votes');
+    sh.appendRow(['time', 'device', 'pick1', 'pick2', 'pick3']);
+  }
+  return sh;
+}
+
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// 投票
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const body = JSON.parse(e.postData.contents);
+    const device = String(body.device || '').slice(0, 64);
+    const raw = body.picks || [];
+    const picks = [...new Set(raw.map(Number))]
+      .filter(n => Number.isInteger(n) && n >= 1 && n <= TOTAL);
+
+    if (!device) return json_({ ok: false, msg: '缺少裝置代碼' });
+    if (picks.length < 1 || picks.length > MAX_PICKS || picks.length !== raw.length)
+      return json_({ ok: false, msg: '選票無效' });
+
+    const sh = sheet_();
+    const last = sh.getLastRow();
+    const devices = last > 1 ? sh.getRange(2, 2, last - 1, 1).getValues().flat() : [];
+    if (devices.includes(device)) return json_({ ok: false, msg: '這台裝置已經投過票了' });
+
+    sh.appendRow([new Date(), device, picks[0] || '', picks[1] || '', picks[2] || '']);
+    return json_({ ok: true });
+  } catch (err) {
+    return json_({ ok: false, msg: '伺服器錯誤' });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 看結果：網址 ?key=ADMIN_KEY
+function doGet(e) {
+  if ((e.parameter.key || '') !== ADMIN_KEY) return json_({ ok: false, msg: '密碼錯誤' });
+  const sh = sheet_();
+  const counts = Array(TOTAL + 1).fill(0);
+  const last = sh.getLastRow();
+  let voters = 0;
+  if (last > 1) {
+    sh.getRange(2, 3, last - 1, 3).getValues().forEach(r => {
+      voters++;
+      r.forEach(v => { const n = Number(v); if (n >= 1 && n <= TOTAL) counts[n]++; });
+    });
+  }
+  return json_({ ok: true, voters, counts: counts.slice(1) });
+}
