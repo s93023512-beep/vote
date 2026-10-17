@@ -86,8 +86,10 @@ function render() {
       <span class="stamp">選</span>
     </button>`).join('');
   $('bar').hidden = voted;
-  $('msg').textContent = `已圈選 ${picks.size} / ${MAX}`;
-  $('cast').disabled = picks.size === 0;
+    $('msg').textContent = picks.size === MAX
+    ? `已圈選 ${MAX} 位，可以送出了`
+    : `已圈選 ${picks.size} / ${MAX}，還要再選 ${MAX - picks.size} 位`;
+  $('cast').disabled = picks.size !== MAX;
   if (voted) $('status').textContent = '✓ 你已經投過票了，謝謝參與！';
 }
 
