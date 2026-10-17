@@ -37,6 +37,7 @@ h1{margin:0;font-size:clamp(26px,6vw,38px);letter-spacing:.04em}
 .fill{height:100%;background:var(--bar)}
 .row.top .fill{background:var(--stamp)}
 .panel{background:var(--sheet);border:1px solid var(--line);border-radius:8px;padding:16px}
+  [hidden]{display:none!important}
 </style>
 </head>
 <body>
@@ -142,8 +143,18 @@ async function loadResults() {
     </div>`).join('');
 }
 
-render();
-if (adminKey) { loadResults(); setInterval(loadResults, 15000); }
+if (adminKey) {
+  document.querySelector('h1').textContent = '開票結果';
+  document.querySelector('.sub').textContent = '管理者頁面 · 每 15 秒自動更新';
+  $('grid').hidden = true;
+  $('bar').hidden = true;
+  $('status').hidden = true;
+  $('tally').hidden = true;
+  loadResults();
+  setInterval(loadResults, 15000);
+} else {
+  render();
+}
 </script>
 </body>
 </html>
