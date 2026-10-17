@@ -1,71 +1,147 @@
-const TOTAL = 16;          // 候選人數
-const MAX_PICKS = 3;       // 每人票數
-const ADMIN_KEY = 'change-me-1234'; // 看結果用的密碼，請自己改
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>三票人氣投票</title>
+<style>
+:root{--paper:#f3f5f7;--sheet:#fff;--ink:#1d2430;--muted:#5f6b7a;--line:#d5dbe3;--stamp:#c8102e;--bar:#24324a}
+@media (prefers-color-scheme:dark){:root{--paper:#11151c;--sheet:#1a202a;--ink:#e7ebf1;--muted:#9aa5b4;--line:#2e3746;--stamp:#ff4d5e;--bar:#8fb0e8;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.6 "PingFang TC","Microsoft JhengHei",system-ui,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:20px 16px 120px;display:grid;gap:20px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:12px}
+h1{margin:0;font-size:clamp(26px,6vw,38px);letter-spacing:.04em}
+.sub{margin:0;font-size:12px;letter-spacing:.18em;color:var(--muted)}
+.tally{display:flex;gap:8px}
+.dot{width:30px;height:30px;border-radius:50%;border:2px dashed var(--line);display:grid;place-items:center;font-size:13px;color:transparent;font-weight:900}
+.dot.on{border:2px solid var(--stamp);color:var(--stamp)}
+.status{padding:10px 14px;border-radius:8px;background:var(--sheet);border:1px solid var(--line);font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+@media (max-width:420px){.grid{grid-template-columns:repeat(2,1fr);gap:10px}}
+.card{position:relative;background:var(--sheet);border:1px solid var(--line);border-radius:6px;padding:8px;display:grid;gap:4px;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.card[aria-pressed="true"]{border-color:var(--stamp);box-shadow:0 0 0 1px var(--stamp)}
+.card:disabled{cursor:default}
+.card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:3px;display:block;background:var(--paper)}
+.no{font-size:12px;color:var(--muted)}
+.name{font-weight:700}
+.stamp{position:absolute;top:14px;right:14px;width:62px;height:62px;border-radius:50%;border:4px solid var(--stamp);color:var(--stamp);font-size:30px;font-weight:900;display:grid;place-items:center;background:rgba(255,255,255,.5);transform:rotate(-12deg) scale(.4);opacity:0;transition:.18s;pointer-events:none}
+.card[aria-pressed="true"] .stamp{opacity:.92;transform:rotate(-12deg) scale(1)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--sheet);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+.bar .in{max-width:1040px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.btn{font:inherit;font-weight:700;padding:10px 20px;border-radius:6px;border:0;background:var(--ink);color:var(--sheet);cursor:pointer}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.row{display:grid;grid-template-columns:28px 40px 1fr auto;gap:10px;align-items:center;margin-bottom:8px}
+.row img{width:40px;height:40px;border-radius:50%;object-fit:cover}
+.track{height:8px;background:var(--paper);border-radius:4px;overflow:hidden}
+.fill{height:100%;background:var(--bar)}
+.row.top .fill{background:var(--stamp)}
+.panel{background:var(--sheet);border:1px solid var(--line);border-radius:8px;padding:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><p class="sub">每人三票 · 投給三位不同的人</p><h1>三票人氣投票</h1></div>
+    <div class="tally" id="tally"></div>
+  </header>
+  <div class="status" id="status">點選照片圈選，最多三位，選好後按「投出選票」。</div>
+  <div class="grid" id="grid"></div>
+  <div class="panel" id="results" hidden></div>
+</div>
+<div class="bar" id="bar">
+  <div class="in"><span id="msg"></span><button class="btn" id="cast">投出選票</button></div>
+</div>
 
-function sheet_() {
-  const props = PropertiesService.getScriptProperties();
-  let id = props.getProperty('SHEET_ID');
-  let ss;
-  if (id) {
-    ss = SpreadsheetApp.openById(id);
-  } else {
-    ss = SpreadsheetApp.create('三票人氣投票-選票');
-    props.setProperty('SHEET_ID', ss.getId());
-  }
-  let sh = ss.getSheetByName('votes');
-  if (!sh) {
-    sh = ss.insertSheet('votes');
-    sh.appendRow(['time', 'device', 'pick1', 'pick2', 'pick3']);
-  }
-  return sh;
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbwCygbISRMV2DxAyiSyeIZmOPxd6bVkflZzP5EXUvSQMb27bw_A8LhgFPR8-GkW299p/exec';
+const MAX = 3;
+const CANDIDATES = [
+  '候選人 1','候選人 2','候選人 3','候選人 4',
+  '候選人 5','候選人 6','候選人 7','候選人 8',
+  '候選人 9','候選人 10','候選人 11','候選人 12',
+  '候選人 13','候選人 14','候選人 15','候選人 16'
+].map((name, i) => ({ no: i + 1, name, photo: `${i + 1}.jpg` }));
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch {} }
+};
+let device = store.get('vote_device');
+if (!device) { device = crypto.randomUUID(); store.set('vote_device', device); }
+
+const picks = new Set();
+let voted = store.get('vote_done') === '1';
+const adminKey = new URLSearchParams(location.search).get('key');
+
+function render() {
+  $('tally').innerHTML = Array.from({ length: MAX }, (_, i) =>
+    `<span class="dot ${i < picks.size ? 'on' : ''}">選</span>`).join('');
+  $('grid').innerHTML = CANDIDATES.map(c => `
+    <button class="card" data-no="${c.no}" aria-pressed="${picks.has(c.no)}" ${voted ? 'disabled' : ''}>
+      <img src="${c.photo}" alt="${c.name}" loading="lazy">
+      <span class="no">No. ${String(c.no).padStart(2, '0')}</span>
+      <span class="name">${c.name}</span>
+      <span class="stamp">選</span>
+    </button>`).join('');
+  $('bar').hidden = voted;
+  $('msg').textContent = `已圈選 ${picks.size} / ${MAX}`;
+  $('cast').disabled = picks.size === 0;
+  if (voted) $('status').textContent = '✓ 你已經投過票了，謝謝參與！';
 }
 
-function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+$('grid').addEventListener('click', e => {
+  const card = e.target.closest('.card');
+  if (!card || voted) return;
+  const no = Number(card.dataset.no);
+  if (picks.has(no)) picks.delete(no);
+  else if (picks.size >= MAX) { $('status').textContent = '最多只能選三位，請先取消一位。'; return; }
+  else picks.add(no);
+  render();
+});
 
-// 投票
-function doPost(e) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+$('cast').addEventListener('click', async () => {
+  $('cast').disabled = true;
+  $('cast').textContent = '送出中…';
   try {
-    const body = JSON.parse(e.postData.contents);
-    const device = String(body.device || '').slice(0, 64);
-    const raw = body.picks || [];
-    const picks = [...new Set(raw.map(Number))]
-      .filter(n => Number.isInteger(n) && n >= 1 && n <= TOTAL);
-
-    if (!device) return json_({ ok: false, msg: '缺少裝置代碼' });
-    if (picks.length < 1 || picks.length > MAX_PICKS || picks.length !== raw.length)
-      return json_({ ok: false, msg: '選票無效' });
-
-    const sh = sheet_();
-    const last = sh.getLastRow();
-    const devices = last > 1 ? sh.getRange(2, 2, last - 1, 1).getValues().flat() : [];
-    if (devices.includes(device)) return json_({ ok: false, msg: '這台裝置已經投過票了' });
-
-    sh.appendRow([new Date(), device, picks[0] || '', picks[1] || '', picks[2] || '']);
-    return json_({ ok: true });
-  } catch (err) {
-    return json_({ ok: false, msg: '伺服器錯誤' });
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-// 看結果：網址 ?key=ADMIN_KEY
-function doGet(e) {
-  if ((e.parameter.key || '') !== ADMIN_KEY) return json_({ ok: false, msg: '密碼錯誤' });
-  const sh = sheet_();
-  const counts = Array(TOTAL + 1).fill(0);
-  const last = sh.getLastRow();
-  let voters = 0;
-  if (last > 1) {
-    sh.getRange(2, 3, last - 1, 3).getValues().forEach(r => {
-      voters++;
-      r.forEach(v => { const n = Number(v); if (n >= 1 && n <= TOTAL) counts[n]++; });
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ device, picks: [...picks] })
     });
+    const data = await res.json();
+    if (data.ok || data.msg === '這台裝置已經投過票了') {
+      voted = true; store.set('vote_done', '1');
+    } else {
+      $('status').textContent = '送出失敗：' + data.msg;
+    }
+  } catch {
+    $('status').textContent = '網路錯誤，請再試一次。';
   }
-  return json_({ ok: true, voters, counts: counts.slice(1) });
+  $('cast').textContent = '投出選票';
+  render();
+});
+
+async function loadResults() {
+  const res = await fetch(`${API_URL}?key=${encodeURIComponent(adminKey)}`);
+  const data = await res.json();
+  const box = $('results');
+  box.hidden = false;
+  if (!data.ok) { box.textContent = data.msg; return; }
+  const list = CANDIDATES.map((c, i) => ({ ...c, n: data.counts[i] || 0 }))
+    .sort((a, b) => b.n - a.n || a.no - b.no);
+  const max = Math.max(1, list[0].n);
+  box.innerHTML = `<h2>開票結果</h2><p>共 ${data.voters} 人投票</p>` + list.map((c, i) => `
+    <div class="row ${c.n && c.n === list[0].n ? 'top' : ''}">
+      <span>${i + 1}</span><img src="${c.photo}" alt="">
+      <div>${c.name}<div class="track"><div class="fill" style="width:${c.n / max * 100}%"></div></div></div>
+      <b>${c.n}</b>
+    </div>`).join('');
 }
+
+render();
+if (adminKey) { loadResults(); setInterval(loadResults, 15000); }
+</script>
+</body>
+</html>
